@@ -2,8 +2,9 @@
   "name": "fmlint",
 	"displayName": "fmlint",
 	"author": "Joel Wilkinson",
-	"publisher": "Joel Wilkinson",
+	"publisher": "joelwilkinson",
 	"description": "",
+	"repository": "https://github.com/JoelWi/fmlint",
 	"version": "0.0.1",
 	"engines": {
 		"vscode": "^1.66.0"
