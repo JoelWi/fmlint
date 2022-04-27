@@ -6,7 +6,9 @@ type MatchedObj = {
   type: number,
   match: string,
   // To be fixed up later
-  line: any
+  line: any,
+  startPos: number,
+  endPos: number
 };
 
 const readFileContents = () => {
@@ -28,12 +30,14 @@ const readFileContents = () => {
     checkIfs.map((k, i) => {
       for (let j = 0; j < editor.document.lineCount; j++) {
         const line = editor.document.lineAt(j);
-        const matches = [...line.text.matchAll(k)];
+        const matches: any = [...line.text.matchAll(k)];
         for (let k = 0; k < matches.length; k++) {
           const tmp: MatchedObj = {
             type: i,
             match: matches[k][0],
-            line: j
+            line: j,
+            startPos: matches[k].index,
+            endPos: matches[k].index + matches[k][0].length
           };
           order.push(tmp);
         }
@@ -58,6 +62,27 @@ const readFileContents = () => {
     } else if (currentChar.type === 0) {
       stack.push(currentChar);
     }
+  }
+
+  // Gets an if closer
+  const getIncompleteVariable = new RegExp('(?<!\\$){(.*?)}', "gs");
+
+  if (editor) {
+    for (let j = 0; j < editor.document.lineCount; j++) {
+      const line = editor.document.lineAt(j);
+      const matches: any = [...line.text.matchAll(getIncompleteVariable)];
+      for (let k = 0; k < matches.length; k++) {
+        const tmp: MatchedObj = {
+          type: 2,
+          match: matches[k][0],
+          line: j,
+          startPos: matches[k].index,
+          endPos: matches[k].index + matches[k][0].length
+        };
+        stack.push(tmp);
+      }
+    }
+    stack.sort((a: any, b: any) => a.line - b.line);
   }
 
   return stack;
@@ -104,6 +129,11 @@ export function activate(context: vscode.ExtensionContext) {
             language: "Freemarker",
             value: "Missing opening [#if] tag",
           });
+        } else if (match.line === line && match.type === 2) {
+          return new vscode.Hover({
+            language: "Freemarker",
+            value: "Missing $ for variable ${variable_name}",
+          });
         }
       }
     }
@@ -114,13 +144,28 @@ export function activate(context: vscode.ExtensionContext) {
 // this method is called when your extension is deactivated
 export function deactivate() { }
 
-const getDecorationTypeFromConfig = () => {
-  const decorationType = vscode.window.createTextEditorDecorationType({
+const getDecorationTypeFromConfig = (type: number = -1) => {
+
+  const defaultType = {
     isWholeLine: false,
-    borderWidth: `0 0 5 0`,
-    borderStyle: `solid`,
+    border: `2px`,
+    borderStyle: `dotted`,
     borderColor: 'red'
-  });
+  };
+
+  const decorationType = vscode.window.createTextEditorDecorationType(defaultType);
+
+  if (type === 2) {
+    const incorrectVariable = {
+      isWholeLine: false,
+      border: `2px`,
+      borderStyle: `dotted`,
+      borderColor: 'green'
+    };
+    const decorationType = vscode.window.createTextEditorDecorationType(incorrectVariable);
+    return decorationType;
+  }
+
   return decorationType;
 };
 
@@ -171,12 +216,12 @@ const updateDecorations = (decorationType: any, updateAllVisibleEditors = false)
         let currentLine = 0;
 
         for (const match of matches) {
-          // console.log(match.line);
           for (let i = currentLine; i < editor.document.lineCount; i++) {
             const line = editor.document.lineAt(i);
             if (line.text.includes(match.match) && i === match.line) {
               currentLine = i + 1;
-              const newDecoration = { range: new vscode.Range(line.range.start, line.range.end) };
+              // const newDecoration = { range: new vscode.Range(line.range.start, line.range.end) };
+              const newDecoration = { range: new vscode.Range(new vscode.Position(match.line, match.startPos), new vscode.Position(match.line, match.endPos)) };
               linesToDecorate.push(newDecoration);
               // vscode.window.showErrorMessage(`Line: ${match.line + 1} missing IF opener/closure`);
               break;

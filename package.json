@@ -1,6 +1,8 @@
 {
   "name": "fmlint",
 	"displayName": "fmlint",
+	"author": "Joel Wilkinson",
+	"publisher": "Joel Wilkinson",
 	"description": "",
 	"version": "0.0.1",
 	"engines": {
@@ -10,17 +12,11 @@
 		"Other"
 	],
 	"activationEvents": [
-		"onLanguage:html",
-        "onCommand:fmlint.helloWorld"
+		"onLanguage:html"
 	],
 	"main": "./out/extension.js",
 	"contributes": {
-		"commands": [
-			{
-				"command": "fmlint.helloWorld",
-				"title": "Hello World"
-			}
-		]
+		"commands": []
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",
