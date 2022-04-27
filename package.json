@@ -5,7 +5,7 @@
 	"publisher": "joelwilkinson",
 	"description": "",
 	"repository": "https://github.com/JoelWi/fmlint",
-	"version": "0.0.1",
+	"version": "0.0.12",
 	"engines": {
 		"vscode": "^1.66.0"
 	},

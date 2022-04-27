@@ -59,13 +59,13 @@ const readFileContents = () => {
       stack.push(currentChar);
     } else if (currentChar.type === 1 && stack[stack.length - 1].type === 0) {
       stack.pop();
-    } else if (currentChar.type === 0) {
+    } else if (currentChar.type === 1) {
       stack.push(currentChar);
     }
   }
 
-  // Gets an if closer
-  const getIncompleteVariable = new RegExp('(?<!\\$){(.*?)}', "gs");
+  // Gets an incomplete variable e.g. {first_name} which should be ${first_name}
+  const getIncompleteVariable = new RegExp('(?<!\\$){[^%](.*?)[^%]}', "gs");
 
   if (editor) {
     for (let j = 0; j < editor.document.lineCount; j++) {
@@ -74,6 +74,27 @@ const readFileContents = () => {
       for (let k = 0; k < matches.length; k++) {
         const tmp: MatchedObj = {
           type: 2,
+          match: matches[k][0],
+          line: j,
+          startPos: matches[k].index,
+          endPos: matches[k].index + matches[k][0].length
+        };
+        stack.push(tmp);
+      }
+    }
+    stack.sort((a: any, b: any) => a.line - b.line);
+  }
+
+  // Gets an incomplete/incorrect statement e.g. [##if], [#if#], [/if]
+  const getIncompleteStatement = new RegExp('(\\[((((?!#).)*?)|(#(([#].*)|.*([#].*))))])|(\\[\\/((((?!#).)*?)|(#(([#].*)|.*([#].*))))])', "gs");
+
+  if (editor) {
+    for (let j = 0; j < editor.document.lineCount; j++) {
+      const line = editor.document.lineAt(j);
+      const matches: any = [...line.text.matchAll(getIncompleteStatement)];
+      for (let k = 0; k < matches.length; k++) {
+        const tmp: MatchedObj = {
+          type: 3,
           match: matches[k][0],
           line: j,
           startPos: matches[k].index,
@@ -133,6 +154,11 @@ export function activate(context: vscode.ExtensionContext) {
           return new vscode.Hover({
             language: "Freemarker",
             value: "Missing $ for variable ${variable_name}",
+          });
+        } else if (match.line === line && match.type === 3) {
+          return new vscode.Hover({
+            language: "Freemarker",
+            value: "Incomplete or incorrect statement e.g. missing # or more than one #",
           });
         }
       }
