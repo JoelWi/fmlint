@@ -106,6 +106,29 @@ const readFileContents = () => {
     stack.sort((a: any, b: any) => a.line - b.line);
   }
 
+  // Gets an incomplete/incorrect operator e.g. [#if first_name = 'something'] or
+  // [#if first_name == 'something' && surname == 'something' | company_name == 'something'] or
+  // [#if first_name == 'something' & surname == 'something' || company_name == 'something'] or
+  const getIncompleteOperator = new RegExp('\\[#if((.*?)(?<!=)=(?!=)(.*?)|((.*?)(?<!\\|)\\|(?!\\|)(.*?))|((.*?)(?<!\\&)\\&(?!\\&)(.*?)))]', "gs");
+
+  if (editor) {
+    for (let j = 0; j < editor.document.lineCount; j++) {
+      const line = editor.document.lineAt(j);
+      const matches: any = [...line.text.matchAll(getIncompleteOperator)];
+      for (let k = 0; k < matches.length; k++) {
+        const tmp: MatchedObj = {
+          type: 4,
+          match: matches[k][0],
+          line: j,
+          startPos: matches[k].index,
+          endPos: matches[k].index + matches[k][0].length
+        };
+        stack.push(tmp);
+      }
+    }
+    stack.sort((a: any, b: any) => a.line - b.line);
+  }
+
   return stack;
 };
 
@@ -159,6 +182,11 @@ export function activate(context: vscode.ExtensionContext) {
           return new vscode.Hover({
             language: "Freemarker",
             value: "Incomplete or incorrect statement e.g. missing # or more than one #",
+          });
+        } else if (match.line === line && match.type === 4) {
+          return new vscode.Hover({
+            language: "Freemarker",
+            value: "Incomplete operators found. Check for '==' & '&&' & '||'.",
           });
         }
       }
