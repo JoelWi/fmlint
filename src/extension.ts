@@ -86,7 +86,7 @@ const readFileContents = () => {
   }
 
   // Gets an incomplete/incorrect statement e.g. [##if], [#if#], [/if]
-  const getIncompleteStatement = new RegExp('(\\[((((?!#).)*?)|(#(([#].*)|.*([#].*))))])|(\\[\\/((((?!#).)*?)|(#(([#].*)|.*([#].*))))])', "gs");
+  const getIncompleteStatement = new RegExp('((\\[\\/(((?!#).)[^\\]]*]))|(\\[(#[#].[^\\]]*]))|(\\[((?!\\/)(?!#).*[#][^\\]]*]))|(\\[((?!\\/)(?!#)[^\\]]*]))|((\\[#(([^\\]]*?)#)[^\\]]*])))', "gs");
 
   if (editor) {
     for (let j = 0; j < editor.document.lineCount; j++) {
