@@ -5,7 +5,9 @@ FMLint is a static analysis tool for freemarker templating engine code in HTML f
 ## Features
 
 Checks if statement clauses are properly opened/closed and that they are correctly written e.g. [#if condition] not [if condition] (missing #).
+
 Validates template literals are correct e.g. {first_name} -> ${first_name}
+
 Checks for correctness of operators e.g. missing & for && or is like & & etc
 
 ## Known Issues
