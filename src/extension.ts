@@ -6,49 +6,209 @@ type MatchedObj = {
   type: number,
   match: string,
   // To be fixed up later
-  line: any,
+  startLine: any,
+  endLine: any,
   startPos: number,
-  endPos: number
+  endPos: number,
+  charPosStart: number,
+  charPosEnd: number
 };
 
 const readFileContents = () => {
-  // Gets an if opener
-  const getIfOpener = new RegExp('\\[#if(.*?)]', "gs");
+  let stack: MatchedObj[] = [];
+  const parse = (text: string) => {
+    let textToShift = [...text];
+    let textToChars = [...text];
+    let textPos = 0;
+    let lineNum = 0;
+    let startLine = 0;
+    let start = 0;
+    let end = 0;
 
-  // Gets an if closer
-  const getIfCloser = new RegExp('\\[\\/#if]', "gs");
+    // const getSymbol = () => {
+    //   while (textToChars.length > 0 && textToChars[0] === " ") {
+    //     textToChars.shift();
+    //   }
 
-  const checkIfs = [getIfOpener, getIfCloser];
+    //   return textToChars[0] || "";
+    // };
+
+    const nextSymbol = () => {
+      textToShift.shift();
+      return ++textPos;
+    };
+
+    const newLineCheck = () => {
+      if (textToChars[textPos] === "\n") {
+        return true;
+      }
+
+      return false;
+    };
+
+    const findSyntax = (charOpen: string, charClose: string, start: number, end: number) => {
+      let builder = "";
+      let startPos = end;
+      let endPos = end;
+      let startPosChar = textPos;
+      let endPosChar = textPos;
+      lineNum = 0;
+
+      // Skip every char until an opening [
+      while (textToChars[textPos] !== charOpen) {
+        // Increase line number so we can track position & not add to syntax
+        if (newLineCheck()) {
+          startLine++;
+          startPos = 0;
+        } else {
+          startPos++;
+        }
+        nextSymbol();
+      }
+
+      startPosChar = textPos;
+
+      endPos = startPos;
+
+      while (textToChars[textPos] !== charClose) {
+        // Increase line number so we can track position & not add to syntax
+        if (newLineCheck()) {
+          lineNum++;
+          endPos = 0;
+        } else {
+          endPos++;
+          if (textToChars[textPos] !== "\r") {
+            builder += textToChars[textPos];
+          }
+        }
+        nextSymbol();
+      }
+
+      // Finishing touches
+      builder += charClose;
+      endPosChar = textPos;
+      endPos++;
+
+      return {
+        syntax: builder,
+        startLine: startLine,
+        startPos: startPos,
+        endLine: startLine + lineNum,
+        endPos: endPos,
+        charPosStart: startPosChar,
+        charPosEnd: endPosChar,
+      };
+    };
+
+    let found = [];
+    const syntaxes = [["[", "]"], ["{", "}"]];
+
+    for (const syntax of syntaxes) {
+      textToShift = [...text];
+      textPos = 0;
+      lineNum = 0;
+      startLine = 0;
+      start = 0;
+      end = 0;
+
+      while (textToShift.includes(syntax[0]) && textToShift.includes(syntax[1])) {
+        const data = findSyntax(syntax[0], syntax[1], start, end);
+        found.push(data);
+        start = data.endPos;
+        end = data.endPos;
+        startLine = data.endLine;
+      }
+    }
+
+    found.sort((a, b) => {
+      if (a.startLine === b.startLine) {
+        return a.startPos - b.startPos;
+      }
+
+      return a.startLine - b.startLine;
+    });
+
+    return found;
+  };
+
+  const validateMatch = (match: string, pattern: string) => {
+    let count = 0;
+
+    for (let i = 0; i < match.length; i++) {
+      if (match[i] === pattern) {
+        count++;
+      }
+    }
+    return count === 0 || count > 1 ? true : false;
+  };
+
   let order: any = [];
 
   const editor = vscode.window.activeTextEditor;
 
   if (editor) {
+    const text = editor.document.getText();
+    const tmp = parse(`${text}`);
 
-    // Push the matches of openers and closures to results
-    // Add all matches to order
-    checkIfs.map((k, i) => {
-      for (let j = 0; j < editor.document.lineCount; j++) {
-        const line = editor.document.lineAt(j);
-        const matches: any = [...line.text.matchAll(k)];
-        for (let k = 0; k < matches.length; k++) {
-          const tmp: MatchedObj = {
-            type: i,
-            match: matches[k][0],
-            line: j,
-            startPos: matches[k].index,
-            endPos: matches[k].index + matches[k][0].length
-          };
-          order.push(tmp);
+    for (const match of tmp) {
+      // Base case if something isn't getting properly assigned a type
+      let type = -1;
+
+      if (match.syntax.includes("#if") && !match.syntax.includes("/#if")) {
+        type = 0;
+
+        for (let i = 0; i < match.syntax.length; i++) {
+          // Ignore if the check was ok and skip to next char
+          if ((match.syntax[i] === "=" && match.syntax[i - 1] === "=") || (match.syntax[i] === "|" && match.syntax[i - 1] === "|") || (match.syntax[i] === "&" && match.syntax[i - 1] === "&")) {
+            i++;
+          }
+
+          const char = match.syntax[i];
+          const charNext = match.syntax[i + 1];
+          if ((char === "=" && charNext !== "=") || (char === "|" && charNext !== "|") || (char === "&" && charNext !== "&")) {
+            type = 4;
+            break;
+          }
         }
+
+      } else if (match.syntax.includes("/#if") && !validateMatch(match.syntax, "/")) {
+        type = 1;
+      } else if (match.syntax.includes("{") && text[match.charPosStart - 1] !== "$") {
+        type = 2;
       }
-    });
-  }
 
-  // Sort the orders by position to validate the statements
-  order.sort((a: any, b: any) => a.line - b.line);
+      if (((type === 0 || type === 1) && validateMatch(match.syntax, "#")) || (match.syntax.includes("/#if") && validateMatch(match.syntax, "/"))) {
+        type = 3;
+      }
 
-  let stack: MatchedObj[] = [];
+      const toPush = {
+        match: match.syntax,
+        type: type,
+        startLine: match.startLine,
+        endLine: match.endLine,
+        startPos: match.startPos,
+        endPos: match.endPos,
+        charPosStart: match.charPosStart,
+        charPosEnd: match.charPosEnd
+      };
+
+      order.push(toPush);
+
+      // These types are errors on their own and are not correct
+      if (type > 1) {
+        stack.push(toPush);
+      }
+    }
+  };
+
+  // // Sort the orders by position to validate the statements
+  order.sort((a: any, b: any) => {
+    if (a.startLine === b.startLine) {
+      return a.startPos - b.startPos;
+    };
+
+    return a.startLine - b.startLine;
+  });
 
   for (let i = 0; i < order.length; i++) {
     let currentChar = order[i];
@@ -64,70 +224,13 @@ const readFileContents = () => {
     }
   }
 
-  // Gets an incomplete variable e.g. {first_name} which should be ${first_name}
-  const getIncompleteVariable = new RegExp('(?<!\\$){[^%](.*?)[^%]}', "gs");
+  stack.sort((a: any, b: any) => {
+    if (a.startLine === b.startLine) {
+      return a.startPos - b.startPos;
+    };
 
-  if (editor) {
-    for (let j = 0; j < editor.document.lineCount; j++) {
-      const line = editor.document.lineAt(j);
-      const matches: any = [...line.text.matchAll(getIncompleteVariable)];
-      for (let k = 0; k < matches.length; k++) {
-        const tmp: MatchedObj = {
-          type: 2,
-          match: matches[k][0],
-          line: j,
-          startPos: matches[k].index,
-          endPos: matches[k].index + matches[k][0].length
-        };
-        stack.push(tmp);
-      }
-    }
-    stack.sort((a: any, b: any) => a.line - b.line);
-  }
-
-  // Gets an incomplete/incorrect statement e.g. [##if], [#if#], [/if]
-  const getIncompleteStatement = new RegExp('((\\[\\/(((?!#).)[^\\]]*]))|(\\[(#[#].[^\\]]*]))|(\\[((?!\\/)(?!#).*[#][^\\]]*]))|(\\[((?!\\/)(?!#)[^\\]]*]))|((\\[#(([^\\]]*?)#)[^\\]]*])))', "gs");
-
-  if (editor) {
-    for (let j = 0; j < editor.document.lineCount; j++) {
-      const line = editor.document.lineAt(j);
-      const matches: any = [...line.text.matchAll(getIncompleteStatement)];
-      for (let k = 0; k < matches.length; k++) {
-        const tmp: MatchedObj = {
-          type: 3,
-          match: matches[k][0],
-          line: j,
-          startPos: matches[k].index,
-          endPos: matches[k].index + matches[k][0].length
-        };
-        stack.push(tmp);
-      }
-    }
-    stack.sort((a: any, b: any) => a.line - b.line);
-  }
-
-  // Gets an incomplete/incorrect operator e.g. [#if first_name = 'something'] or
-  // [#if first_name == 'something' && surname == 'something' | company_name == 'something'] or
-  // [#if first_name == 'something' & surname == 'something' || company_name == 'something'] or
-  const getIncompleteOperator = new RegExp('\\[#if((.*?)(?<!=)=(?!=)(.*?)|((.*?)(?<!\\|)\\|(?!\\|)(.*?))|((.*?)(?<!\\&)\\&(?!\\&)(.*?)))]', "gs");
-
-  if (editor) {
-    for (let j = 0; j < editor.document.lineCount; j++) {
-      const line = editor.document.lineAt(j);
-      const matches: any = [...line.text.matchAll(getIncompleteOperator)];
-      for (let k = 0; k < matches.length; k++) {
-        const tmp: MatchedObj = {
-          type: 4,
-          match: matches[k][0],
-          line: j,
-          startPos: matches[k].index,
-          endPos: matches[k].index + matches[k][0].length
-        };
-        stack.push(tmp);
-      }
-    }
-    stack.sort((a: any, b: any) => a.line - b.line);
-  }
+    return a.startLine - b.startLine;
+  });
 
   return stack;
 };
@@ -163,30 +266,30 @@ export function activate(context: vscode.ExtensionContext) {
       const line = position.line;
 
       for (const match of results) {
-        if (match.line === line && match.type === 0) {
+        if ((match.startLine > line || line <= match.endLine) && match.type === 0) {
           return new vscode.Hover({
-            language: "Freemarker",
-            value: "Missing closing [#/if] tag",
+            language: "html",
+            value: "Missing closing [#/if] tag.",
           });
-        } else if (match.line === line && match.type === 1) {
+        } else if ((match.startLine > line || line <= match.endLine) && match.type === 1) {
           return new vscode.Hover({
-            language: "Freemarker",
-            value: "Missing opening [#if] tag",
+            language: "html",
+            value: "Missing opening [#if] tag.",
           });
-        } else if (match.line === line && match.type === 2) {
+        } else if ((match.startLine > line || line <= match.endLine) && match.type === 2) {
           return new vscode.Hover({
-            language: "Freemarker",
-            value: "Missing $ for variable ${variable_name}",
+            language: "html",
+            value: "Missing $ for variable ${variable_name}.",
           });
-        } else if (match.line === line && match.type === 3) {
+        } else if ((match.startLine > line || line <= match.endLine) && match.type === 3) {
           return new vscode.Hover({
-            language: "Freemarker",
-            value: "Incomplete or incorrect statement e.g. missing # or more than one #",
+            language: "html",
+            value: "Incomplete or incorrect statement e.g. missing # or more than one #.",
           });
-        } else if (match.line === line && match.type === 4) {
+        } else if ((match.startLine > line || line <= match.endLine) && match.type === 4) {
           return new vscode.Hover({
-            language: "Freemarker",
-            value: "Incomplete operators found. Check for '==' & '&&' & '||'.",
+            language: "html",
+            value: "Incomplete operators found. Check for '==', '&&', or '||'.",
           });
         }
       }
@@ -267,20 +370,11 @@ const updateDecorations = (decorationType: any, updateAllVisibleEditors = false)
         // Start highlighting the lines
         const matches = results;
         let linesToDecorate = [];
-        let currentLine = 0;
+        // let currentLine = 0;
 
         for (const match of matches) {
-          for (let i = currentLine; i < editor.document.lineCount; i++) {
-            const line = editor.document.lineAt(i);
-            if (line.text.includes(match.match) && i === match.line) {
-              currentLine = i + 1;
-              // const newDecoration = { range: new vscode.Range(line.range.start, line.range.end) };
-              const newDecoration = { range: new vscode.Range(new vscode.Position(match.line, match.startPos), new vscode.Position(match.line, match.endPos)) };
-              linesToDecorate.push(newDecoration);
-              // vscode.window.showErrorMessage(`Line: ${match.line + 1} missing IF opener/closure`);
-              break;
-            }
-          }
+          const newDecoration = { range: new vscode.Range(new vscode.Position(match.startLine, match.startPos), new vscode.Position(match.endLine, match.endPos)) };
+          linesToDecorate.push(newDecoration);
         }
 
         editor.setDecorations(decorationType, linesToDecorate);
