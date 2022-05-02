@@ -2,12 +2,11 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from "vscode";
 
-type MatchedObj = {
+interface MatchedObj {
   type: number,
   match: string,
-  // To be fixed up later
-  startLine: any,
-  endLine: any,
+  startLine: number,
+  endLine: number,
   startPos: number,
   endPos: number,
   charPosStart: number,
@@ -17,13 +16,18 @@ type MatchedObj = {
 const readFileContents = () => {
   let stack: MatchedObj[] = [];
   const parse = (text: string) => {
+    // Reason for this is so we can keep track of the char position in the given file
+    // when we start shifting the chars out
     let textToShift = [...text];
     let textToChars = [...text];
+
+    // The current char position in the given file
     let textPos = 0;
-    let lineNum = 0;
+
     let startLine = 0;
-    let start = 0;
-    let end = 0;
+
+    // Number of lines iterated over since the starting line
+    let lineNum = 0;
 
     // const getSymbol = () => {
     //   while (textToChars.length > 0 && textToChars[0] === " ") {
@@ -46,7 +50,7 @@ const readFileContents = () => {
       return false;
     };
 
-    const findSyntax = (charOpen: string, charClose: string, start: number, end: number) => {
+    const findSyntax = (charOpen: string, charClose: string, end: number) => {
       let builder = "";
       let startPos = end;
       let endPos = end;
@@ -55,7 +59,7 @@ const readFileContents = () => {
       lineNum = 0;
 
       // Skip every char until an opening [
-      while (textToChars[textPos] !== charOpen) {
+      while (textToChars[textPos] !== charOpen && textPos < textToChars.length) {
         // Increase line number so we can track position & not add to syntax
         if (newLineCheck()) {
           startLine++;
@@ -70,7 +74,7 @@ const readFileContents = () => {
 
       endPos = startPos;
 
-      while (textToChars[textPos] !== charClose) {
+      while (textToChars[textPos] !== charClose && textPos < textToChars.length) {
         // Increase line number so we can track position & not add to syntax
         if (newLineCheck()) {
           lineNum++;
@@ -85,9 +89,11 @@ const readFileContents = () => {
       }
 
       // Finishing touches
-      builder += charClose;
-      endPosChar = textPos;
-      endPos++;
+      if (textToChars[textPos] === charClose) {
+        builder += charClose;
+        endPosChar = textPos;
+        endPos++;
+      }
 
       return {
         syntax: builder,
@@ -108,13 +114,13 @@ const readFileContents = () => {
       textPos = 0;
       lineNum = 0;
       startLine = 0;
-      start = 0;
-      end = 0;
+
+      // Final char position of matched syntax on the last line
+      let end = 0;
 
       while (textToShift.includes(syntax[0]) && textToShift.includes(syntax[1])) {
-        const data = findSyntax(syntax[0], syntax[1], start, end);
+        const data = findSyntax(syntax[0], syntax[1], end);
         found.push(data);
-        start = data.endPos;
         end = data.endPos;
         startLine = data.endLine;
       }
@@ -142,6 +148,26 @@ const readFileContents = () => {
     return count === 0 || count > 1 ? true : false;
   };
 
+  const validateOperators = (match: string) => {
+
+    for (let i = 0; i < match.length; i++) {
+      // Ignore if the check was ok and skip to next char
+      if ((match[i] === "=" && (match[i - 1] === "=" || match[i - 1] === "!")) || (match[i] === "|" && match[i - 1] === "|") || (match[i] === "&" && match[i - 1] === "&")) {
+        i++;
+      }
+
+      if (i + 1 <= match.length) {
+        const char = match[i];
+        const charNext = match[i + 1];
+        if (((char === "=" || char === "!") && charNext !== "=") || (char === "|" && charNext !== "|") || (char === "&" && charNext !== "&")) {
+          return 4;
+        }
+      }
+    }
+
+    return 0;
+  };
+
   let order: any = [];
 
   const editor = vscode.window.activeTextEditor;
@@ -154,34 +180,30 @@ const readFileContents = () => {
       // Base case if something isn't getting properly assigned a type
       let type = -1;
 
+      // 1. Catching the opening if blocks
+      // 2. Catching the closing if blocks
+      // 3. Catching the template literals where they do not have a starting $ before {}
       if (match.syntax.includes("#if") && !match.syntax.includes("/#if")) {
-        type = 0;
 
-        for (let i = 0; i < match.syntax.length; i++) {
-          // Ignore if the check was ok and skip to next char
-          if ((match.syntax[i] === "=" && match.syntax[i - 1] === "=") || (match.syntax[i] === "|" && match.syntax[i - 1] === "|") || (match.syntax[i] === "&" && match.syntax[i - 1] === "&")) {
-            i++;
-          }
+        // Validating that the operators found in the condition are valid
+        type = validateOperators(match.syntax);
 
-          const char = match.syntax[i];
-          const charNext = match.syntax[i + 1];
-          if ((char === "=" && charNext !== "=") || (char === "|" && charNext !== "|") || (char === "&" && charNext !== "&")) {
-            type = 4;
-            break;
-          }
-        }
-
-      } else if (match.syntax.includes("/#if") && !validateMatch(match.syntax, "/")) {
+      } else if (match.syntax.includes("/#if")) {
         type = 1;
       } else if (match.syntax.includes("{") && text[match.charPosStart - 1] !== "$") {
         type = 2;
       }
 
-      if (((type === 0 || type === 1) && validateMatch(match.syntax, "#")) || (match.syntax.includes("/#if") && validateMatch(match.syntax, "/"))) {
+      // Validate if blocks do not have syntax errors e.g. multiple or missing #, / etc
+      // 1. If block validated how many #
+      // 2. If block closure contains just one /
+      // 3. If block is not missing an opening [
+      // 4. If block is missing closing ] - Will cause opening block to say no closing block found as well
+      if (((type === 0 || type === 1) && validateMatch(match.syntax, "#")) || (match.syntax.includes("/#if") && validateMatch(match.syntax, "/")) || (!match.syntax.includes("[") && match.syntax.includes("]")) || (match.syntax.includes("[") && !match.syntax.includes("]"))) {
         type = 3;
       }
 
-      const toPush = {
+      const toPush: MatchedObj = {
         match: match.syntax,
         type: type,
         startLine: match.startLine,
@@ -201,7 +223,7 @@ const readFileContents = () => {
     }
   };
 
-  // // Sort the orders by position to validate the statements
+  // Sort the orders by position to validate the statements
   order.sort((a: any, b: any) => {
     if (a.startLine === b.startLine) {
       return a.startPos - b.startPos;
@@ -210,6 +232,7 @@ const readFileContents = () => {
     return a.startLine - b.startLine;
   });
 
+  // Stack operation (currently pushes/pops if blocks)
   for (let i = 0; i < order.length; i++) {
     let currentChar = order[i];
 
@@ -284,12 +307,12 @@ export function activate(context: vscode.ExtensionContext) {
         } else if ((match.startLine > line || line <= match.endLine) && match.type === 3) {
           return new vscode.Hover({
             language: "html",
-            value: "Incomplete or incorrect statement e.g. missing # or more than one #.",
+            value: "Syntax error. block scope is missing, or is incomplete or incorrect statement.",
           });
         } else if ((match.startLine > line || line <= match.endLine) && match.type === 4) {
           return new vscode.Hover({
             language: "html",
-            value: "Incomplete operators found. Check for '==', '&&', or '||'.",
+            value: "Incomplete operators found. Check for '==', '!=', '&&', or '||'.",
           });
         }
       }
