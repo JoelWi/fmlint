@@ -190,7 +190,7 @@ const readFileContents = () => {
 
       } else if (match.syntax.includes("/#if")) {
         type = 1;
-      } else if (match.syntax.includes("{") && text[match.charPosStart - 1] !== "$") {
+      } else if (match.syntax.includes("{") && text[match.charPosStart - 1] !== "$" && !match.syntax.includes("%")) {
         type = 2;
       }
 
