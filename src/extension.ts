@@ -136,6 +136,7 @@ const readFileContents = () => {
     return found;
   };
 
+  // Validates how much of 'pattern' is in 'match'
   const validateMatch = (match: string, pattern: string) => {
     let count = 0;
 
@@ -194,6 +195,15 @@ const readFileContents = () => {
         type = 1;
       } else if (match.syntax.includes("{") && text[match.charPosStart - 1] !== "$" && !match.syntax.includes("%")) {
         type = 2;
+
+        // Checking the operators under elseifs
+      } else if (match.syntax.includes("#elseif")) {
+        const retVal = validateOperators(match.syntax);
+
+        // elseif contained an invalid operation, at this point retVal will only be 4
+        if (retVal !== 0) {
+          type = retVal;
+        }
       }
 
       // Validate if blocks do not have syntax errors e.g. multiple or missing #, / etc
