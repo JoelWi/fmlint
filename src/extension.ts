@@ -92,7 +92,6 @@ const readFileContents = () => {
       if (textToChars[textPos] === charClose) {
         builder += charClose;
         endPosChar = textPos;
-        endPos++;
       }
 
       return {
@@ -399,7 +398,7 @@ const updateDecorations = (decorationType: any, updateAllVisibleEditors = false)
         // let currentLine = 0;
 
         for (const match of matches) {
-          const newDecoration = { range: new vscode.Range(new vscode.Position(match.startLine, match.startPos), new vscode.Position(match.endLine, match.endPos)) };
+          const newDecoration = { range: new vscode.Range(new vscode.Position(match.startLine, match.startPos), new vscode.Position(match.endLine, match.endPos + 1)) };
           linesToDecorate.push(newDecoration);
         }
 

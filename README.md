@@ -15,6 +15,9 @@ Not all problems are shown, in-process of building them all in!
 
 ## Release Notes
 
+### 0.0.24
+Now only runs when active editor is a html file
+
 ### 0.0.21
 Now using AST to build the tokens through parsing (originally used simple regex to bootstrap).
 
