@@ -172,7 +172,10 @@ const readFileContents = () => {
 
   const editor = vscode.window.activeTextEditor;
 
-  if (editor) {
+  const editorFileName = vscode.window.activeTextEditor?.document.fileName;
+
+  // Only run when the current active file is html
+  if (editor && editorFileName?.slice(-5) === ".html") {
     const text = editor.document.getText();
     const tmp = parse(`${text}`);
 
